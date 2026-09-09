@@ -28,7 +28,9 @@ The application does not contain seeded fake market prices. If a provider is not
 
 ## Real provider references
 
-BharatStock exposes Indian stock prices, index prices and FII/DII data through its documented API. Kite Connect provides historical market data and live WebSocket/quote APIs; the application keeps Kite credentials server-side. urlBharatStock API referencehttps://bharatstockapi.com/reference urlKite Connect API docshttps://kite.trade/docs/connect/v3/
+BharatStock exposes Indian stock prices, index prices and FII/DII data through its documented API: https://bharatstockapi.com/reference
+
+Kite Connect provides historical market data and live WebSocket/quote APIs: https://kite.trade/docs/connect/v3/
 
 ## Fastest local setup
 
