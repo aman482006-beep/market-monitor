@@ -1,15 +1,16 @@
 from datetime import datetime, timezone
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.market import DailyPrice, GlobalPrice, FiiDiiFlow, NewsArticle
+from app.models.market import DailyPrice, GlobalPrice, FiiDiiFlow, NewsArticle, Stock
 from app.schemas.market import Health, Breadth, Regime, GlobalQuote, Flow
 from app.analytics.breadth import compute_breadth
 from app.analytics.regime import calculate_regime
 from app.services.ai import explain_market
+from app.services.kite import KiteMarketService
 
 router = APIRouter(prefix="/api")
 
@@ -53,6 +54,50 @@ def global_quotes(db: Session = Depends(get_db)):
 def flows(db: Session = Depends(get_db)):
     rows = db.execute(select(FiiDiiFlow).order_by(FiiDiiFlow.trade_date.desc()).limit(30)).scalars().all()
     return [Flow(date=r.trade_date, fii_net=r.fii_net, dii_net=r.dii_net, fii_buy=r.fii_buy, fii_sell=r.fii_sell, dii_buy=r.dii_buy, dii_sell=r.dii_sell, source=r.source) for r in rows]
+
+@router.get("/market/live")
+def live_quotes(symbols: str | None = Query(default=None, description="Comma-separated Kite instruments, e.g. NSE:RELIANCE,NSE:INFY")):
+    requested = [x.strip() for x in (symbols or settings.kite_symbols).split(",") if x.strip()]
+    try:
+        return {"status": "LIVE", "data": KiteMarketService().quotes(requested), "generated_at": datetime.now(timezone.utc)}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+@router.get("/market/scanners/movers")
+def movers(db: Session = Depends(get_db), threshold: float = Query(0.20, ge=0.01, le=2.0), limit: int = Query(25, ge=1, le=100)):
+    df = _breadth_dataframe(db)
+    if df.empty:
+        return {"date": None, "items": []}
+    df = df.sort_values(["symbol", "trade_date"])
+    df["ret5"] = df.groupby("symbol")["close"].pct_change(5)
+    last_date = df.trade_date.max()
+    latest = df[df.trade_date == last_date].dropna(subset=["ret5"]).sort_values("ret5", ascending=False)
+    return {"date": last_date, "threshold": threshold, "items": latest[latest.ret5 >= threshold].head(limit)[["symbol", "close", "ret5", "volume"]].to_dict("records")}
+
+@router.get("/market/scanners/volume")
+def volume_scanner(db: Session = Depends(get_db), move_pct: float = Query(0.04, ge=0.01, le=1), limit: int = Query(50, ge=1, le=100)):
+    df = _breadth_dataframe(db)
+    if df.empty:
+        return {"date": None, "items": []}
+    df = df.sort_values(["symbol", "trade_date"])
+    g = df.groupby("symbol")
+    df["prev_close"] = g.close.shift(1)
+    df["vol20"] = g.volume.transform(lambda s: s.rolling(20, min_periods=20).mean())
+    df["move"] = df.close / df.prev_close - 1
+    last = df[df.trade_date == df.trade_date.max()].copy()
+    last = last[(last.move.abs() >= move_pct) & (last.volume > last.vol20)].sort_values("move", ascending=False)
+    return {"date": df.trade_date.max(), "move_pct": move_pct, "items": last.head(limit)[["symbol", "close", "move", "volume", "vol20"]].to_dict("records")}
+
+@router.get("/market/sectors")
+def sectors(db: Session = Depends(get_db)):
+    prices = _breadth_dataframe(db)
+    stocks = pd.DataFrame([{"symbol": r.symbol, "sector": r.sector or "Unclassified"} for r in db.execute(select(Stock)).scalars().all()])
+    if prices.empty or stocks.empty:
+        return []
+    prices = prices.sort_values(["symbol", "trade_date"])
+    prices["ret1d"] = prices.groupby("symbol").close.pct_change()
+    latest = prices[prices.trade_date == prices.trade_date.max()].merge(stocks, on="symbol", how="left")
+    return latest.groupby("sector", dropna=False).agg(stocks=("symbol", "count"), avg_1d=("ret1d", "mean"), up=("ret1d", lambda s: int((s > 0).sum())), down=("ret1d", lambda s: int((s < 0).sum()))).reset_index().sort_values("avg_1d", ascending=False).to_dict("records")
 
 @router.get("/news")
 def news(db: Session = Depends(get_db), limit: int = 50):
