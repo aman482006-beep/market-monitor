@@ -77,3 +77,12 @@ class NewsArticle(Base):
     importance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     market_impact_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+class BrokerSession(Base):
+    __tablename__ = "broker_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    broker: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    access_token: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
