@@ -36,9 +36,12 @@ Kite Connect provides historical market data and live WebSocket/quote APIs: http
 
 ```bash
 cp .env.example .env
-# Put your real provider keys in .env
+# Replace POSTGRES_PASSWORD with a long, unique random password.
+# Put your real provider keys in .env.
 docker compose up --build
 ```
+
+The Docker Compose stack binds the database, Redis, API and web ports to `127.0.0.1` only. They will not be published to your laptop's LAN interfaces by default.
 
 Then:
 
