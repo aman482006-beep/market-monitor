@@ -3,10 +3,10 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: market
-      POSTGRES_PASSWORD: market
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
       POSTGRES_DB: market_monitor
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - market-monitor-pg:/var/lib/postgresql/data
     healthcheck:
@@ -18,16 +18,16 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   api:
     build: ./apps/api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://market:market@postgres:5432/market_monitor
+      DATABASE_URL: "postgresql+psycopg://market:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/market_monitor"
       REDIS_URL: redis://redis:6379/0
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,7 +38,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - api
 
@@ -46,7 +46,7 @@ services:
     build: ./apps/api
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://market:market@postgres:5432/market_monitor
+      DATABASE_URL: "postgresql+psycopg://market:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/market_monitor"
       REDIS_URL: redis://redis:6379/0
     command: ["python", "-m", "app.workers.run_jobs"]
     depends_on:
