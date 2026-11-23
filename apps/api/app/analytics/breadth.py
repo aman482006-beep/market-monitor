@@ -23,10 +23,13 @@ def compute_breadth(df: pd.DataFrame) -> dict:
     latest = work[work["trade_date"] == last_date].copy()
     eligible = len(latest)
 
-    def pct(mask):
-        valid = mask.dropna() if hasattr(mask, "dropna") else mask
-        denom = int(valid.shape[0]) if hasattr(valid, "shape") else eligible
-        return round(float(mask.sum() / eligible * 100), 2) if eligible else None
+    def sma_breadth(column: str) -> float | None:
+        # Symbols without a complete lookback are not eligible for this SMA metric.
+        valid = latest[column].notna()
+        if not valid.any():
+            return None
+        above = latest.loc[valid, "close"] > latest.loc[valid, column]
+        return round(float(above.mean() * 100), 2)
 
     highs = lows = 0
     for _, h in work.groupby("symbol"):
@@ -43,9 +46,9 @@ def compute_breadth(df: pd.DataFrame) -> dict:
     return {
         "date": last_date,
         "eligible": eligible,
-        "above_20_sma": round(float((latest["close"] > latest["sma20"]).sum() / eligible * 100), 2) if eligible else None,
-        "above_50_sma": round(float((latest["close"] > latest["sma50"]).sum() / eligible * 100), 2) if eligible else None,
-        "above_200_sma": round(float((latest["close"] > latest["sma200"]).sum() / eligible * 100), 2) if eligible else None,
+        "above_20_sma": sma_breadth("sma20"),
+        "above_50_sma": sma_breadth("sma50"),
+        "above_200_sma": sma_breadth("sma200"),
         "advances": advances,
         "declines": declines,
         "ad": advances - declines,
